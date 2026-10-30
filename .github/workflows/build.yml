@@ -22,10 +22,13 @@ jobs:
           flutter-version: '3.10.0'
           cache: true
 
-      - name: Get Flutter Packages
+      - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build APK
+      - name: Create Android Native Files
+        run: flutter create . --platforms=android --org com.example
+
+      - name: Build APK Debug
         run: flutter build apk --debug
 
       - name: Upload APK Artifact
