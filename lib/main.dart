@@ -48,8 +48,8 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
   int currentSample = 1;
   bool isRecording = false;
   
-  // تم تصحيح الأقواس هنا لتكون سليمة تماماً بدون أخطاء
-  final Map<String, List>> trainingDatabase = {};
+  // قاعدة البيانات مبسطة تماماً وخالية من الرموز المعقدة
+  Map trainingDatabase = {};
   
   String customSavePath = 'المجلد الافتراضي للمستندات';
 
@@ -96,7 +96,7 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
 
       final file = File('${targetDir.path}/voice_lab_dataset.json');
 
-      final Map<String, dynamic> exportData = {
+      final Map exportData = {
         "app_name": "Voice Lab - المختبر الصوتي",
         "target_application": "Rosd / رصد",
         "version": "1.0",
@@ -131,9 +131,11 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
             isRecording = false;
             
             String currentLetter = arabicLetters[currentLetterIndex];
-            trainingDatabase.putIfAbsent(currentLetter, () => []);
+            if (!trainingDatabase.containsKey(currentLetter)) {
+              trainingDatabase[currentLetter] = [];
+            }
             
-            trainingDatabase[currentLetter]!.add({
+            trainingDatabase[currentLetter].add({
               "sample_id": currentSample,
               "phoneme": currentLetter,
               "dialect": "Egyptian / Saidi",
