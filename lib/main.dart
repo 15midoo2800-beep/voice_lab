@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:file_picker/file_picker.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,62 +46,50 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
 
   int currentLetterIndex = 0;
   int currentSample = 1;
+  int targetSamplesPerLetter = 3; // القيمة الافتراضية للتكرار (يمكنك تعديلها)
   bool isRecording = false;
   
   Map trainingDatabase = {};
-  String customSavePath = 'المجلد الافتراضي للمستندات';
+  String finalSavedFilePath = 'جاري التجهيز...';
+  
+  final TextEditingController repsController = TextEditingController(text: '3');
 
-  // فتح نافذة اختيار المجلد الحقيقية لتحديد مكان الحفظ بكل حرية
-  Future<void> pickCustomDirectory() async {
-    try {
-      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-
-      if (selectedDirectory != null) {
-        setState(() {
-          customSavePath = selectedDirectory;
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم تحديد مسار الحفظ بنجاح:\n$customSavePath'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر فتح نافذة المجلدات: $e'), backgroundColor: Colors.red),
-      );
-    }
+  @override
+  void initState() {
+    super.initState();
+    _initPath();
   }
 
-  Future<void> exportDatasetToCustomPath() async {
+  Future<void> _initPath() async {
+    final dir = await getApplicationDocumentsDirectory();
+    setState(() {
+      finalSavedFilePath = '${dir.path}/voice_lab_dataset.json';
+    });
+  }
+
+  // حفظ الملف فعلياً في مسار آمن
+  Future<void> exportDatasetSafely() async {
     try {
-      Directory targetDir;
-      if (customSavePath.contains('المجلد الافتراضي')) {
-        targetDir = await getApplicationDocumentsDirectory();
-      } else {
-        targetDir = Directory(customSavePath);
-      }
-
-      if (!await targetDir.exists()) {
-        await targetDir.create(recursive: true);
-      }
-
-      final file = File('${targetDir.path}/voice_lab_dataset.json');
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/voice_lab_dataset.json');
 
       final Map exportData = {
         "app_name": "Voice Lab - المختبر الصوتي",
         "target_application": "Rosd / رصد",
         "version": "1.0",
         "timestamp": DateTime.now().toIso8601String(),
+        "target_samples_per_letter": targetSamplesPerLetter,
         "total_letters_trained": trainingDatabase.keys.length,
         "dataset": trainingDatabase,
       };
 
       await file.writeAsString(jsonEncode(exportData), flush: true);
+      
+      setState(() {
+        finalSavedFilePath = file.path;
+      });
     } catch (e) {
-      debugPrint('Error saving file: $e');
+      debugPrint('Error saving: $e');
     }
   }
 
@@ -114,7 +101,7 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
     if (isRecording) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('جاري تسجيل المقطع ($currentSample/10) للحرف "${arabicLetters[currentLetterIndex]}"...'),
+          content: Text('جاري تسجيل المقطع ($currentSample/$targetSamplesPerLetter) للحرف "${arabicLetters[currentLetterIndex]}"...'),
           duration: const Duration(seconds: 2),
           backgroundColor: Colors.blueAccent,
         ),
@@ -134,13 +121,12 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
               "sample_id": currentSample,
               "phoneme": currentLetter,
               "dialect": "Egyptian / Saidi",
-              "confidence_score": 1.0,
               "recorded_at": DateTime.now().toIso8601String(),
             });
 
-            exportDatasetToCustomPath();
+            exportDatasetSafely();
 
-            if (currentSample < 10) {
+            if (currentSample < targetSamplesPerLetter) {
               currentSample++;
             } else {
               if (currentLetterIndex < arabicLetters.length - 1) {
@@ -161,7 +147,7 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('🎯 اكتمل التدريب بالكامل!'),
-        content: Text('تم حفظ بصمات الحروف العربية ودلالاتها بنجاح في:\n$customSavePath'),
+        content: Text('تم حفظ بصمات الحروف ودلالاتها بنجاح في:\n\n$finalSavedFilePath'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -175,7 +161,7 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
   @override
   Widget build(BuildContext context) {
     String currentLetter = arabicLetters[currentLetterIndex];
-    double progress = ((currentLetterIndex * 10) + currentSample) / (28 * 10);
+    double progress = ((currentLetterIndex * targetSamplesPerLetter) + currentSample) / (28 * targetSamplesPerLetter);
 
     return Scaffold(
       appBar: AppBar(
@@ -188,36 +174,81 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            ElevatedButton.icon(
-              onPressed: pickCustomDirectory,
-              icon: const Icon(Icons.folder_open, color: Colors.amber),
-              label: const Text('اختر مجلد الحفظ يدوياً', style: TextStyle(color: Colors.white)),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF334155)),
+            // خانة اختيار عدد مرات تكرار الحرف بحرية
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.amber, width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  const Text('عدد مرات تسجيل الحرف الواحد:', style: TextStyle(fontSize: 13, color: Colors.amber)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: repsController,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        filled: true,
+                        fillColor: Colors.black26,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onSubmitted: (value) {
+                        int? val = int.tryParse(value);
+                        if (val != null && val > 0) {
+                          setState(() {
+                            targetSamplesPerLetter = val;
+                            currentSample = 1;
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('تم تحديث عدد مرات التكرار لكل حرف إلى: $val'), backgroundColor: Colors.green),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'المسار المختار: $customSavePath',
-              style: const TextStyle(fontSize: 11, color: Colors.cyanAccent),
-              textAlign: TextAlign.center,
+            const SizedBox(height: 10),
+
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black38,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.greenAccent.withOpacity(0.4)),
+              ),
+              child: Text(
+                'مسار الملف: $finalSavedFilePath',
+                style: const TextStyle(fontSize: 10, color: Colors.greenAccent),
+                textAlign: TextAlign.center,
+              ),
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 12),
 
             LinearProgressIndicator(
-              value: progress,
+              value: progress.clamp(0.0, 1.0),
               backgroundColor: Colors.grey[800],
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
               minHeight: 8,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
-              'الحرف: (${currentLetterIndex + 1} / 28)  |  المقطع: ($currentSample / 10)',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.amber),
+              'الحرف: (${currentLetterIndex + 1} / 28)  |  المقطع: ($currentSample / $targetSamplesPerLetter)',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.amber),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
 
+            // بطاقة عرض الحرف
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 color: const Color(0xFF1E293B),
                 borderRadius: BorderRadius.circular(16),
@@ -225,23 +256,24 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
               ),
               child: Column(
                 children: [
-                  Text('انطق الحرف:', style: TextStyle(fontSize: 14, color: Colors.grey[400])),
-                  const SizedBox(height: 10),
+                  Text('انطق الحرف:', style: TextStyle(fontSize: 13, color: Colors.grey[400])),
+                  const SizedBox(height: 8),
                   Text(
                     currentLetter,
-                    style: const TextStyle(fontSize: 80, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: const TextStyle(fontSize: 75, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 25),
 
+            // زر التسجيل
             GestureDetector(
               onTap: toggleRecording,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                width: 110,
-                height: 110,
+                width: 105,
+                height: 105,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isRecording ? Colors.redAccent : Colors.blueAccent,
@@ -255,16 +287,16 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
                 ),
                 child: Icon(
                   isRecording ? Icons.mic : Icons.mic_none,
-                  size: 55,
+                  size: 50,
                   color: Colors.white,
                 ),
               ),
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 12),
             Text(
-              isRecording ? 'جاري تسجيل المقطع الصوتي...' : 'اضغط على الميكروفون لبدء التسجيل ($currentSample / 10)',
+              isRecording ? 'جاري تسجيل المقطع...' : 'اضغط للميكروفون لتسجيل المقطع ($currentSample / $targetSamplesPerLetter)',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 color: isRecording ? Colors.redAccent : Colors.grey[300],
                 fontWeight: FontWeight.w500,
               ),
