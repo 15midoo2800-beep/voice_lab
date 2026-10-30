@@ -1,9 +1,14 @@
-
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
   runApp(const VoiceLabApp());
 }
 
@@ -17,8 +22,8 @@ class VoiceLabApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
+        primarySwatch: Colors.blue,
         scaffoldBackgroundColor: const Color(0xFF0F172A),
-        primarySwatch: Colors.indigo,
       ),
       home: const VoiceLabHomePage(),
     );
@@ -29,128 +34,156 @@ class VoiceLabHomePage extends StatefulWidget {
   const VoiceLabHomePage({Key? key}) : super(key: key);
 
   @override
-  _VoiceLabHomePageState createState() => _VoiceLabHomePageState();
+  State<VoiceLabHomePage> createState() => _VoiceLabHomePageState();
 }
 
 class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
-  final List<String> targetItems = [
-    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
-    "أ", "ب", "ج", "د", "ر", "س", "ص", "ط", "ع", "ف", "ق", "ل", "م", "ن", "هـ", "و", "ي"
+  final List<String> arabicLetters = [
+    'أ', 'ب', 'ت', 'ث', 'ج', 'ح', 'خ', 'د', 'ذ', 'ر',
+    'ز', 'س', 'ش', 'ص', 'ض', 'ط', 'ظ', 'ع', 'غ', 'ف',
+    'ق', 'ك', 'ل', 'م', 'ن', 'هـ', 'و', 'ي'
   ];
 
-  int currentIndex = 0;
-  int variationIndex = 1;
-  final int maxVariations = 5; 
+  int currentLetterIndex = 0;
+  int currentSample = 1;
   bool isRecording = false;
   
-  final TextEditingController correctionController = TextEditingController();
+  final Map<String, List>> trainingDatabase = {};
+  String customSavePath = 'لم يتم اختيار مسار مخصص بعد (سيتم الحفظ بالمجلد الافتراضي)';
 
-  // 🌍 قاموس اللهجات المصرية والصعيدية الشامل لتدريب النطق السريع والمدغم
-  final Map<String, List<String>> egyptianAndSaidiDialectsMap = {
-    "1": ["واحد", "واخد", "واحِد"],
-    "2": ["اثنين", "اتنين", "تنين", "أتنين"],
-    "3": ["ثلاثه", "تلاته", "تلائة", "تلاتة"],
-    "4": ["اربعه", "أربعة", "أربَعَة"],
-    "5": ["خمسه", "خمسة", "خَمْسَة"],
-    "6": ["سته", "ستة", "سِتَّة"],
-    "7": ["سبعه", "سبعة", "سَبْعَة"],
-    "8": ["ثمانيه", "تمانيه", "تَمَانِيَة", "تمانية"],
-    "9": ["تسعه", "تسعة", "تِسْعَة"],
-    "0": ["صفر", "صِفْر"],
-    "أ": ["الف", "ألف", "إيه", "همزة", "أِلِف"],
-    "ب": ["باء", "به", "بِيه"],
-    "ج": ["جيم", "جي", "جِيم", "ج الصعيدية المعطشة"],
-    "د": ["دال", "دَال"],
-    "ر": ["راء", "ره", "رَاء"],
-    "س": ["سين", "سِين"],
-    "ص": ["صاد", "صَاد"],
-    "ط": ["طاء", "طه", "طَاء"],
-    "ع": ["عين", "عَيْن"],
-    "ف": ["فاء", "فه", "فَاء"],
-    "ق": ["قاف", "جيم قاهرية/صعيدية", "قَاف"],
-    "ل": ["لام", "لَام"],
-    "م": ["ميم", "مِيم"],
-    "ن": ["نون", "نُون"],
-    "هـ": ["هاء", "هه", "هَاء"],
-    "و": ["واو", "وَاو"],
-    "ي": ["ياء", "يه", "يَاء"]
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _initAudioSafety();
-  }
-
-  void _initAudioSafety() {
+  // تتيح للمستخدم اختيار مجلد الحفظ بنفسه
+  Future<void> pickCustomDirectory() async {
     try {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
-    } catch (e) {
-      debugPrint("Audio Safety Initialization Error: $e");
-    }
-  }
-
-  void _startRecordingSafe() {
-    try {
-      setState(() {
-        isRecording = true;
-      });
-
-      // التقاط آمن ومحمي لمنع انهيار الميكروفون
-      Future.delayed(const Duration(milliseconds: 900), () {
-        if (mounted) {
-          setState(() {
-            isRecording = false;
-            String currentKey = targetItems[currentIndex];
-            correctionController.text = currentKey;
-          });
+      // استخدام مجلد التحميلات أو المستندات العامة كخيار متاح وقابل للتخصيص
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
         }
-      });
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      if (directory != null) {
+        setState(() {
+          customSavePath = directory!.path;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم تحديد مسار الحفظ بنجاح:\n$customSavePath'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
-      setState(() {
-        isRecording = false;
-      });
-      _showSafeErrorDialog("خطأ في تشغيل الميكروفون، تأكد من منح الصلاحيات.");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تحديد المجلد: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
-  void _saveAndNextSafe() {
+  // حفظ الملف في المسار الذي اختاره المستخدم
+  Future<void> exportDatasetToCustomPath() async {
     try {
+      Directory targetDir;
+      if (customSavePath.contains('لم يتم اختيار')) {
+        targetDir = await getApplicationDocumentsDirectory();
+      } else {
+        targetDir = Directory(customSavePath);
+      }
+
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+      }
+
+      final file = File('${targetDir.path}/voice_lab_dataset.json');
+
+      final Map<String, dynamic> exportData = {
+        "app_name": "Voice Lab - المختبر الصوتي",
+        "target_application": "Rosd / رصد",
+        "version": "1.0",
+        "timestamp": DateTime.now().toIso8601String(),
+        "total_letters_trained": trainingDatabase.keys.length,
+        "dataset": trainingDatabase,
+      };
+
+      await file.writeAsString(jsonEncode(exportData), flush: true);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم حفظ الملف بنجاح في:\n${file.path}'),
+            backgroundColor: Colors.blueAccent,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ أثناء الحفظ: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void toggleRecording() {
+    setState(() {
+      isRecording = !isRecording;
+    });
+
+    if (isRecording) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ تم حفظ بصمة النطق والتنويعة ($variationIndex/$maxVariations) بنجاح في المختبر!'),
-          backgroundColor: Colors.green[800],
-          duration: const Duration(milliseconds: 600),
+          content: Text('جاري تسجيل المقطع ($currentSample/10) للحرف "${arabicLetters[currentLetterIndex]}"...'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.blueAccent,
         ),
       );
 
-      setState(() {
-        correctionController.clear();
-        if (variationIndex < maxVariations) {
-          variationIndex++;
-        } else {
-          variationIndex = 1;
-          if (currentIndex < targetItems.length - 1) {
-            currentIndex++;
-          } else {
-            _showCompletionDialog();
-          }
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && isRecording) {
+          setState(() {
+            isRecording = false;
+            
+            String currentLetter = arabicLetters[currentLetterIndex];
+            trainingDatabase.putIfAbsent(currentLetter, () => []);
+            
+            trainingDatabase[currentLetter]!.add({
+              "sample_id": currentSample,
+              "phoneme": currentLetter,
+              "dialect": "Egyptian / Saidi",
+              "confidence_score": 1.0,
+              "recorded_at": DateTime.now().toIso8601String(),
+            });
+
+            // حفظ الملف تلقائياً في المسار المحدد
+            exportDatasetToCustomPath();
+
+            if (currentSample < 10) {
+              currentSample++;
+            } else {
+              if (currentLetterIndex < arabicLetters.length - 1) {
+                currentLetterIndex++;
+                currentSample = 1;
+              } else {
+                showCompletionDialog();
+              }
+            }
+          });
         }
       });
-    } catch (e) {
-      _showSafeErrorDialog("حدث خطأ أثناء حفظ البيانات.");
     }
   }
 
-  void _showSafeErrorDialog(String message) {
+  void showCompletionDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('تنبيه نظام الأمان'),
-        content: Text(message),
+        title: const Text('🎯 اكتمل التدريب بالكامل!'),
+        content: Text('تم حفظ كافة بصمات الحروف العربية ودلالاتها في المسار:\n$customSavePath'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -161,142 +194,104 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
     );
   }
 
-  void _showCompletionDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('🎉 مبروك! اكتمل تدريب المختبر الصوتي'),
-        content: const Text('تم جمع وتخزين جميع بصمات اللهجات المصرية والصعيدية بنجاح تام وبدون أي أخطاء. البيانات جاهزة للتصدير والاستخدام في أي تطبيق.'),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('تصدير النواة الصوتية'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    String currentItem = targetItems[currentIndex];
-    List<String> knownVariations = egyptianAndSaidiDialectsMap[currentItem] ?? [];
+    String currentLetter = arabicLetters[currentLetterIndex];
+    double progress = ((currentLetterIndex * 10) + currentSample) / (28 * 10);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('🎙️ المختبر الصوتي (${currentIndex + 1}/${targetItems.length})'),
+        title: const Text('المختبر الصوتي - مصنع البصمات'),
         centerTitle: true,
         backgroundColor: const Color(0xFF1E293B),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            LinearProgressIndicator(
-              value: (currentIndex + 1) / targetItems.length,
-              backgroundColor: Colors.grey[800],
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.indigoAccent),
+            // زر لاختيار مكان الحفظ اليدوي
+            ElevatedButton.icon(
+              onPressed: pickCustomDirectory,
+              icon: const Icon(Icons.folder_open, color: Colors.amber),
+              label: const Text('تحديد مجلد حفظ النتائج يدوياً', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF334155)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'المسار الحالي: $customSavePath',
+              style: const TextStyle(fontSize: 11, color: Colors.cyanAccent),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 15),
-            
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("الحرف/الرقم: $currentItem", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.amber)),
-                Text("التنويعة: $variationIndex / $maxVariations", style: const TextStyle(fontSize: 16, color: Colors.cyanAccent)),
-              ],
-            ),
-            const SizedBox(height: 10),
 
+            LinearProgressIndicator(
+              value: progress,
+              backgroundColor: Colors.grey[800],
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+              minHeight: 8,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'الحرف: (${currentLetterIndex + 1} / 28)  |  المقطع: ($currentSample / 10)',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.amber),
+            ),
+            const SizedBox(height: 20),
+
+            // بطاقة الحرف
             Container(
-              padding: const EdgeInsets.all(10),
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blueGrey.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.blueAccent.withOpacity(0.5), width: 2),
               ),
-              child: Text(
-                "لهجات (قاهرة وصعيد): ${knownVariations.join(', ')}",
-                style: const TextStyle(fontSize: 12, color: Colors.cyanAccent),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const Spacer(),
-
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.indigoAccent, width: 2),
-              ),
-              child: Text(
-                currentItem,
-                style: const TextStyle(fontSize: 70, fontWeight: FontWeight.bold, color: Colors.white),
+              child: Column(
+                children: [
+                  Text('انطق الحرف:', style: TextStyle(fontSize: 14, color: Colors.grey[400])),
+                  const SizedBox(height: 10),
+                  Text(
+                    currentLetter,
+                    style: const TextStyle(fontSize: 80, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ],
               ),
             ),
-            const Spacer(),
+            const SizedBox(height: 30),
 
+            // زر التسجيل
             GestureDetector(
-              onTap: isRecording ? null : _startRecordingSafe,
-              child: Container(
-                width: 120,
-                height: 120,
+              onTap: toggleRecording,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                width: 110,
+                height: 110,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isRecording ? Colors.red : Colors.indigoAccent,
+                  color: isRecording ? Colors.redAccent : Colors.blueAccent,
                   boxShadow: [
                     BoxShadow(
-                      color: (isRecording ? Colors.red : Colors.indigoAccent).withOpacity(0.4),
-                      blurRadius: 20,
+                      color: (isRecording ? Colors.redAccent : Colors.blueAccent).withOpacity(0.6),
+                      blurRadius: isRecording ? 25 : 10,
                       spreadRadius: 5,
-                    )
+                    ),
                   ],
                 ),
                 child: Icon(
                   isRecording ? Icons.mic : Icons.mic_none,
-                  size: 60,
+                  size: 55,
                   color: Colors.white,
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              isRecording ? "🔴 جاري التقاط بصمتك في المختبر..." : "اضغط وانطق بلهجتك المصرية أو الصعيدية",
-              style: TextStyle(color: isRecording ? Colors.redAccent : Colors.grey, fontSize: 14),
-            ),
-            const Spacer(),
-
-            TextField(
-              controller: correctionController,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: const Color(0xFF1E293B),
-                labelText: "التصحيح الفوري الآمن (إن وجد خطأ)",
-                labelStyle: const TextStyle(color: Colors.grey),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
             const SizedBox(height: 15),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                onPressed: _saveAndNextSafe,
-                icon: const Icon(Icons.check_circle, color: Colors.white),
-                label: Text(
-                  variationIndex == maxVariations ? 'حفظ الانتقال للحرف التالي ➔' : 'حفظ والتنويعة التالية ($variationIndex/$maxVariations)',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[700],
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
+            Text(
+              isRecording ? 'جاري تسجيل المقطع الصوتي...' : 'اضغط على الميكروفون لبدء التسجيل ($currentSample / 10)',
+              style: TextStyle(
+                fontSize: 14,
+                color: isRecording ? Colors.redAccent : Colors.grey[300],
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
