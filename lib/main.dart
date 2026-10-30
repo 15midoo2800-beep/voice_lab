@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,35 +49,29 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
   int currentSample = 1;
   bool isRecording = false;
   
-  // قاعدة البيانات مبسطة تماماً وخالية من الرموز المعقدة
   Map trainingDatabase = {};
-  
   String customSavePath = 'المجلد الافتراضي للمستندات';
 
+  // فتح نافذة اختيار المجلد الحقيقية لتحديد مكان الحفظ بكل حرية
   Future<void> pickCustomDirectory() async {
     try {
-      Directory? directory;
-      if (Platform.isAndroid) {
-        directory = await getExternalStorageDirectory();
-      } else {
-        directory = await getApplicationDocumentsDirectory();
-      }
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
-      if (directory != null) {
+      if (selectedDirectory != null) {
         setState(() {
-          customSavePath = directory!.path;
+          customSavePath = selectedDirectory;
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم تعيين مسار الحفظ:\n$customSavePath'),
+            content: Text('تم تحديد مسار الحفظ بنجاح:\n$customSavePath'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر تحديد المجلد: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('تعذر فتح نافذة المجلدات: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -196,12 +191,12 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
             ElevatedButton.icon(
               onPressed: pickCustomDirectory,
               icon: const Icon(Icons.folder_open, color: Colors.amber),
-              label: const Text('تحديد مجلد حفظ النتائج', style: TextStyle(color: Colors.white)),
+              label: const Text('اختر مجلد الحفظ يدوياً', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF334155)),
             ),
             const SizedBox(height: 8),
             Text(
-              'المسار: $customSavePath',
+              'المسار المختار: $customSavePath',
               style: const TextStyle(fontSize: 11, color: Colors.cyanAccent),
               textAlign: TextAlign.center,
             ),
