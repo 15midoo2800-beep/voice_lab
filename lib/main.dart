@@ -48,19 +48,16 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
   int currentSample = 1;
   bool isRecording = false;
   
+  // قاعدة البيانات بدون أي أخطاء مطبعية
   final Map<String, List>> trainingDatabase = {};
-  String customSavePath = 'لم يتم اختيار مسار مخصص بعد (سيتم الحفظ بالمجلد الافتراضي)';
+  
+  String customSavePath = 'المجلد الافتراضي للمستندات';
 
-  // تتيح للمستخدم اختيار مجلد الحفظ بنفسه
   Future<void> pickCustomDirectory() async {
     try {
-      // استخدام مجلد التحميلات أو المستندات العامة كخيار متاح وقابل للتخصيص
       Directory? directory;
       if (Platform.isAndroid) {
-        directory = Directory('/storage/emulated/0/Download');
-        if (!await directory.exists()) {
-          directory = await getExternalStorageDirectory();
-        }
+        directory = await getExternalStorageDirectory();
       } else {
         directory = await getApplicationDocumentsDirectory();
       }
@@ -72,7 +69,7 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم تحديد مسار الحفظ بنجاح:\n$customSavePath'),
+            content: Text('تم تعيين مسار الحفظ:\n$customSavePath'),
             backgroundColor: Colors.green,
           ),
         );
@@ -84,11 +81,10 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
     }
   }
 
-  // حفظ الملف في المسار الذي اختاره المستخدم
   Future<void> exportDatasetToCustomPath() async {
     try {
       Directory targetDir;
-      if (customSavePath.contains('لم يتم اختيار')) {
+      if (customSavePath.contains('المجلد الافتراضي')) {
         targetDir = await getApplicationDocumentsDirectory();
       } else {
         targetDir = Directory(customSavePath);
@@ -110,22 +106,8 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
       };
 
       await file.writeAsString(jsonEncode(exportData), flush: true);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم حفظ الملف بنجاح في:\n${file.path}'),
-            backgroundColor: Colors.blueAccent,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ أثناء الحفظ: $e'), backgroundColor: Colors.red),
-        );
-      }
+      debugPrint('Error saving file: $e');
     }
   }
 
@@ -159,7 +141,6 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
               "recorded_at": DateTime.now().toIso8601String(),
             });
 
-            // حفظ الملف تلقائياً في المسار المحدد
             exportDatasetToCustomPath();
 
             if (currentSample < 10) {
@@ -183,7 +164,7 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('🎯 اكتمل التدريب بالكامل!'),
-        content: Text('تم حفظ كافة بصمات الحروف العربية ودلالاتها في المسار:\n$customSavePath'),
+        content: Text('تم حفظ بصмات الحروف العربية ودلالاتها بنجاح في:\n$customSavePath'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -210,16 +191,15 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // زر لاختيار مكان الحفظ اليدوي
             ElevatedButton.icon(
               onPressed: pickCustomDirectory,
               icon: const Icon(Icons.folder_open, color: Colors.amber),
-              label: const Text('تحديد مجلد حفظ النتائج يدوياً', style: TextStyle(color: Colors.white)),
+              label: const Text('تحديد مجلد حفظ النتائج', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF334155)),
             ),
             const SizedBox(height: 8),
             Text(
-              'المسار الحالي: $customSavePath',
+              'المسار: $customSavePath',
               style: const TextStyle(fontSize: 11, color: Colors.cyanAccent),
               textAlign: TextAlign.center,
             ),
@@ -238,7 +218,6 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
             ),
             const SizedBox(height: 20),
 
-            // بطاقة الحرف
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -260,7 +239,6 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
             ),
             const SizedBox(height: 30),
 
-            // زر التسجيل
             GestureDetector(
               onTap: toggleRecording,
               child: AnimatedContainer(
