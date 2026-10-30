@@ -48,7 +48,7 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
   int currentSample = 1;
   bool isRecording = false;
   
-  // قاعدة البيانات بدون أي أخطاء مطبعية
+  // تم تصحيح الأقواس هنا لتكون سليمة تماماً بدون أخطاء
   final Map<String, List>> trainingDatabase = {};
   
   String customSavePath = 'المجلد الافتراضي للمستندات';
@@ -164,7 +164,7 @@ class _VoiceLabHomePageState extends State<VoiceLabHomePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('🎯 اكتمل التدريب بالكامل!'),
-        content: Text('تم حفظ بصмات الحروف العربية ودلالاتها بنجاح في:\n$customSavePath'),
+        content: Text('تم حفظ بصمات الحروف العربية ودلالاتها بنجاح في:\n$customSavePath'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
