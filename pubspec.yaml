@@ -1,21 +1,35 @@
+name: Build Voice Lab APK
 
-name: voice_lab
-description: An independent voice laboratory application for custom Arabic and dialect recognition.
-publish_to: 'none'
-version: 1.0.0+1
+on:
+  push:
+    branches: [ main ]
 
-environment:
-  sdk: ">=2.17.0 <3.0.0"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
 
-dependencies:
-  flutter:
-    sdk: flutter
-  cupertino_icons: ^1.0.2
+      - name: Set up Java
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'zulu'
+          java-version: '11'
 
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^2.0.0
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.10.0'
+          cache: true
 
-flutter:
-  uses-material-design: true
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build APK Debug
+        run: flutter build apk --debug
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceLab-Debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
